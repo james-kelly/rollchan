@@ -7,8 +7,8 @@ from database import db_session
 import models
 
 # Set to True to make the application run faster.
-USE_MEMCACHE = True
-PAGE_SIZE = 10
+USE_MEMCACHE = False
+PAGE_SIZE = 100
 
 app = Flask(__name__)
 
