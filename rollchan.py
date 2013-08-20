@@ -12,7 +12,8 @@ PAGE_SIZE = 100
 
 app = Flask(__name__)
 
-memc = memcache.Client(['127.0.0.1:11211'], debug=1);
+if USE_MEMCACHE:
+    memc = memcache.Client(['127.0.0.1:11211'], debug=1);
 
 
 @app.teardown_appcontext
@@ -55,33 +56,39 @@ def upload_file(board, post_id=None):
 @app.route('/<board>/')
 @app.route('/<board>/<int:page_id>/')
 def page(board, page_id=0):
-    key = "page_{0}_{1}".format(board, page_id)
-    page = memc.get(key)
+    q = db_session.query(models.Post)
+    q = q.filter(models.Post.parent_id == null())
+    q = q.order_by(desc(models.Post.created))
+    q = q.offset(PAGE_SIZE * page_id)
+    q = q.limit(PAGE_SIZE)
 
-    if not page or not USE_MEMCACHE:
-        q = db_session.query(models.Post)
-        q = q.filter(models.Post.parent_id == null())
-        q = q.order_by(desc(models.Post.created))
-        q = q.offset(PAGE_SIZE * page_id)
-        q = q.limit(PAGE_SIZE)
+    if USE_MEMCACHE:
+        key = "page_{0}_{1}".format(board, page_id)
+        page = memc.get(key)
+        if not page:
+            page = q.all()
+            memc.set(key, page, time=30)
+    else:
         page = q.all()
-        memc.set(key, page, time=30)
 
     return render_template('page.html', posts=page, board=board, num_children=4)
 
 
 @app.route('/<board>/res/<int:post_id>')
 def reply(board, post_id):
-    key = "post_{0}_{1}".format(board, post_id)
-    post = memc.get(key)
+    q = db_session.query(models.Post)
+    q = q.filter(models.Post.id == post_id)
 
-    if not post or not USE_MEMCACHE:
-        q = db_session.query(models.Post)
-        q = q.filter(models.Post.id == post_id)
-        post = q.first()
-        memc.set(key, post, time=30)
+    if USE_MEMCACHE:
+        key = "post_{0}_{1}".format(board, post_id)
+        post = memc.get(key)
+        if not post:
+            post = q.first()
+            memc.set(key, post, time=30)
     else:
-        db_session.add(post)
+        post = q.first()
+
+    db_session.add(post)
 
     return render_template('page.html', posts=[post], board=board, num_children=9999, is_reply=True)
 
